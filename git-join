@@ -1,0 +1,165 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if ! command -v apt-get >/dev/null 2>&1; then
+    echo "Error: apt-get is required on a Debian/Ubuntu-based system." >&2
+    exit 1
+fi
+
+missing=()
+
+command -v git >/dev/null 2>&1 || missing+=(git)
+command -v ssh-keygen >/dev/null 2>&1 || missing+=(openssh-client)
+command -v jq >/dev/null 2>&1 || missing+=(jq)
+
+if ((${#missing[@]})); then
+    if [[ $EUID -eq 0 ]]; then
+        apt-get update -qq
+        apt-get install -y -qq "${missing[@]}"
+    elif command -v sudo >/dev/null 2>&1; then
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq "${missing[@]}"
+    else
+        echo "Error: missing packages (${missing[*]}) and sudo is not available." >&2
+        exit 1
+    fi
+fi
+
+echo "Paste the JSON configuration (finish with an empty line):"
+config=""
+while IFS= read -r line < /dev/tty; do
+    [[ -z "$line" ]] && break
+    config+="$line"$'\n'
+done
+
+profile=$(jq -er '.profile // empty' <<< "$config") || {
+    echo "Error: invalid JSON or missing 'profile'." >&2
+    exit 1
+}
+
+[[ "$profile" =~ ^[A-Za-z0-9._-]+$ && "$profile" != "." && "$profile" != ".." ]] || {
+    echo "Error: invalid 'profile'; use only letters, numbers, '.', '_' and '-'." >&2
+    exit 1
+}
+
+name=$(jq -r '.name // ""' <<< "$config")
+email=$(jq -r '.email // ""' <<< "$config")
+
+if [[ -n "$email" && ! "$email" =~ ^[^[:space:]@]+@[^[:space:]@]+$ ]]; then
+    echo "Error: invalid 'email' address." >&2
+    exit 1
+fi
+
+if jq -e 'has("sign_commits")' <<< "$config" >/dev/null; then
+    if ! jq -e '.sign_commits | type == "boolean"' <<< "$config" >/dev/null; then
+        echo "Error: 'sign_commits' must be either true or false." >&2
+        exit 1
+    fi
+
+    sign_commits=$(jq -r '.sign_commits' <<< "$config")
+fi
+
+gitconfig="$HOME/.gitconfig-$profile"
+root="$HOME/src/$profile"
+ssh_dir="$HOME/.ssh/git"
+key="$ssh_dir/id_$profile"
+pub="$key.pub"
+
+if [[ ! -f "$gitconfig" ]]; then
+    [[ -n "$name" ]] || {
+        echo "Error: 'name' is required for a new configuration." >&2
+        exit 1
+    }
+
+    [[ -n "$email" ]] || {
+        echo "Error: 'email' is required for a new configuration." >&2
+        exit 1
+    }
+fi
+
+stty -echo < /dev/tty
+trap 'stty echo < /dev/tty' EXIT
+
+echo "Paste the SSH private key, or leave empty to use the existing key:"
+key_data=""
+while IFS= read -r line < /dev/tty; do
+    [[ -z "$line" ]] && break
+    key_data+="$line"$'\n'
+done
+
+stty echo < /dev/tty
+trap - EXIT
+
+if [[ -n "$key_data" ]]; then
+    public_key=$(
+        printf '%s' "$key_data" |
+            ssh-keygen -y -f /dev/stdin
+    ) || {
+        echo "Error: invalid SSH private key." >&2
+        exit 1
+    }
+else
+    [[ -f "$key" ]] || {
+        echo "Error: SSH private key not provided and not found at '$key'." >&2
+        exit 1
+    }
+
+    public_key=$(ssh-keygen -y -f "$key") || {
+        echo "Error: invalid SSH private key at '$key'." >&2
+        exit 1
+    }
+fi
+
+mkdir -p "$HOME/.ssh" "$ssh_dir" "$root"
+chmod 700 "$HOME/.ssh" "$ssh_dir"
+
+if [[ -n "$key_data" ]]; then
+    printf '%s' "$key_data" > "$key"
+    chmod 600 "$key"
+fi
+
+printf '%s\n' "$public_key" > "$pub"
+chmod 644 "$pub"
+
+if [[ -n "$name" ]]; then
+    git config --file "$gitconfig" user.name "$name"
+fi
+
+if [[ -n "$email" ]]; then
+    git config --file "$gitconfig" user.email "$email"
+fi
+
+git config --file "$gitconfig" core.sshCommand \
+    "ssh -i $key -o IdentitiesOnly=yes"
+
+if [[ -n "${sign_commits+x}" ]]; then
+    if [[ "$sign_commits" == "true" ]]; then
+        git config --file "$gitconfig" gpg.format ssh
+        git config --file "$gitconfig" user.signingkey "$pub"
+        git config --file "$gitconfig" commit.gpgsign true
+    else
+        git config --file "$gitconfig" commit.gpgsign false
+    fi
+fi
+
+condition="gitdir:$root/"
+
+git config --global --unset-all "includeIf.$condition.path" 2>/dev/null || true
+git config --global "includeIf.$condition.path" "$gitconfig"
+
+if git config --file "$gitconfig" --get commit.gpgsign >/dev/null 2>&1; then
+    sign_commits=$(git config --file "$gitconfig" --get commit.gpgsign)
+else
+    sign_commits=false
+fi
+
+echo
+echo "Configured:      $profile"
+echo "Repositories:    $root/"
+echo "Git config:      $gitconfig"
+echo "SSH private key: $key"
+echo "Sign commits:    $sign_commits"
+
+echo
+echo "Public key:"
+printf '%s\n' "$public_key"

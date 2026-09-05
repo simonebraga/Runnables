@@ -5,3 +5,7 @@ curl -fsSL https://run.simonebraga.com/<script> | bash
 ```
 
 :warning: **Always inspect a script before piping to bash.**
+
+## Scripts
+
+* [git-join](./git-join) - Configure an isolated Git profile
