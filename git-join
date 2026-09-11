@@ -1,6 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+public_key_from_memory() {
+    local agent key
+    agent=$(ssh-agent -s) || return 1
+    eval "$agent" >/dev/null
+
+    if printf '%s' "$1" | ssh-add - >/dev/null 2>&1; then
+        key=$(ssh-add -L 2>/dev/null | awk 'NR == 1 { print $1, $2 }') || true
+    fi
+
+    ssh-agent -k >/dev/null 2>&1
+
+    [[ -n "${key:-}" ]] || return 1
+    printf '%s\n' "$key"
+}
+
 if ! command -v apt-get >/dev/null 2>&1; then
     echo "Error: apt-get is required on a Debian/Ubuntu-based system." >&2
     exit 1
@@ -91,10 +106,7 @@ stty echo < /dev/tty
 trap - EXIT
 
 if [[ -n "$key_data" ]]; then
-    public_key=$(
-        printf '%s' "$key_data" |
-            ssh-keygen -y -f /dev/stdin
-    ) || {
+    public_key=$(public_key_from_memory "$key_data") || {
         echo "Error: invalid SSH private key." >&2
         exit 1
     }
