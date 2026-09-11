@@ -16,26 +16,26 @@ public_key_from_memory() {
     printf '%s\n' "$key"
 }
 
-if ! command -v apt-get >/dev/null 2>&1; then
-    echo "Error: apt-get is required on a Debian/Ubuntu-based system." >&2
-    exit 1
-fi
+missing=""
 
-missing=()
+command -v git >/dev/null 2>&1 || missing+=" git"
+command -v ssh-keygen >/dev/null 2>&1 || missing+=" openssh-client"
+command -v jq >/dev/null 2>&1 || missing+=" jq"
 
-command -v git >/dev/null 2>&1 || missing+=(git)
-command -v ssh-keygen >/dev/null 2>&1 || missing+=(openssh-client)
-command -v jq >/dev/null 2>&1 || missing+=(jq)
+if [[ -n "$missing" ]]; then
+    if ! command -v apt-get >/dev/null 2>&1; then
+        echo "Error: apt-get is not available, install missing dependencies ($missing ) manually." >&2
+        exit 1
+    fi
 
-if ((${#missing[@]})); then
     if [[ $EUID -eq 0 ]]; then
         apt-get update -qq
-        apt-get install -y -qq "${missing[@]}"
+        apt-get install -y -qq $missing
     elif command -v sudo >/dev/null 2>&1; then
         sudo apt-get update -qq
-        sudo apt-get install -y -qq "${missing[@]}"
+        sudo apt-get install -y -qq $missing
     else
-        echo "Error: missing packages (${missing[*]}) and sudo is not available." >&2
+        echo "Error: sudo is not available, install missing dependencies ($missing ) manually." >&2
         exit 1
     fi
 fi
