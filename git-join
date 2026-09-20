@@ -28,16 +28,17 @@ if [[ -n "$missing" ]]; then
         exit 1
     fi
 
-    if [[ $EUID -eq 0 ]]; then
-        apt-get update -qq
-        apt-get install -y -qq $missing
-    elif command -v sudo >/dev/null 2>&1; then
-        sudo apt-get update -qq
-        sudo apt-get install -y -qq $missing
-    else
-        echo "Error: sudo is not available, install missing dependencies ($missing) manually." >&2
-        exit 1
+    sudo_cmd=()
+    if [[ $EUID -ne 0 ]]; then
+        if ! command -v sudo >/dev/null 2>&1; then
+            echo "Error: sudo is not available, install missing dependencies ($missing) manually." >&2
+            exit 1
+        fi
+        sudo_cmd=(sudo)
     fi
+
+    "${sudo_cmd[@]}" apt-get update -qq
+    "${sudo_cmd[@]}" apt-get install -y -qq $missing
 fi
 
 echo "Paste the JSON configuration (finish with an empty line):"
