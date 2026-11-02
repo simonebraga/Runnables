@@ -3,10 +3,8 @@
 Personal scripts and utilities, ready to run.
 
 ```
-curl -fsSL https://run.simonebraga.com/<script> | bash
+bash -c "$(curl -fsSL https://run.simonebraga.com/scripts/<script>)"
 ```
-
-⚠️ **Always inspect a script before piping to bash.**
 
 ## Scripts
 

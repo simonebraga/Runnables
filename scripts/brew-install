@@ -10,8 +10,9 @@ if [[ "$(uname -s)" != "Darwin" || "$(uname -m)" != "arm64" ]]; then
 fi
 
 if [[ ! -x "$BREW" ]]; then
-    sudo -v
-    NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+else
+    echo "Skipping: Brew already installed."
 fi
 
 grep -qxF "$LINE" "$HOME/.zprofile" 2>/dev/null || printf '\n%s\n' "$LINE" >> "$HOME/.zprofile"
