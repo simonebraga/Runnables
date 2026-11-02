@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BREW=/opt/homebrew/bin/brew
+LINE="eval \"\$($BREW shellenv zsh)\""
+
+if [[ "$(uname -s)" != "Darwin" || "$(uname -m)" != "arm64" ]]; then
+    echo "Error: System not supported." >&2
+    exit 1
+fi
+
+if [[ ! -x "$BREW" ]]; then
+    sudo -v
+    NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+fi
+
+grep -qxF "$LINE" "$HOME/.zprofile" 2>/dev/null || printf '\n%s\n' "$LINE" >> "$HOME/.zprofile"
+"$BREW" analytics off

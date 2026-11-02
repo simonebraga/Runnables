@@ -10,4 +10,5 @@ curl -fsSL https://run.simonebraga.com/<script> | bash
 
 ## Scripts
 
-* [git-join](./git-join) - Configure an isolated Git profile
+* [brew-install](./scripts/brew-install) - Install Homebrew on MacOS
+* [git-join](./scripts/git-join) - Configure an isolated Git profile
